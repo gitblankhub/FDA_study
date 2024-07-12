@@ -1,0 +1,12 @@
+---
+title: "CH1"
+output: html_document
+date: "2024-07-12"
+---
+
+# 1. First steps in the analysis of functional data 
+
+```{r}
+rm(list=ls())
+```
+
