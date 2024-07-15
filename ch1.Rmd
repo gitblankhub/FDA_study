@@ -1,12 +1,184 @@
 ---
-title: "CH1"
-output: html_document
+title: "kokoszka FDA CH1"
+author: Noa Jeong 
+output: 
+  pdf_document : default
+  html_document : default
 date: "2024-07-12"
 ---
+
+- github : 
+https://minitistics.tistory.com/27
 
 # 1. First steps in the analysis of functional data 
 
 ```{r}
 rm(list=ls())
 ```
+
+**You need to update R version (current: R 4.4.1)** : update R (not R studio)
+```{r}
+#install.packages("fda")
+library(fda)
+```
+
+
+$$
+x_n(t_{j,n}) \in \mathbb{R} \quad t_{j,n} \in [T_1, T_2] \quad n=1,2, ..., N \quad j = 1,...,J_n
+$$
+
+$N$ : number of curves
+$J_n$ : observed time point 
+
+
+## 1.1 Basis Expansion 
+
+$$
+X_n(t) \approx \sum_{m=1}^N c_{nm} B_{m}(t) 
+$$
+
+$B_m$ : basis functions (splines wavelets, sine cosine functions)
+
+
+- 5 B-spline basis functions defined on the interval [0,10]. 
+
+```{r}
+spline.basis = create.bspline.basis(rangeval=c(0,10), # interval
+                                    nbasis=5) # number of basis functions 
+plot(spline.basis,lty=1,lwd=2)
+```
+
+- first five Fourier basis functions 
+```{r}
+fourier.basis = create.fourier.basis(rangeval=c(0,10),
+                                     nbasis=5)
+plot(fourier.basis)
+```
+
+Fourier system is usually only suitalbe for functions which have approximately the same values at the beginnin and the end of the interval. 
+
+### Example 1.1.1 [B-spline expansion on Wiener process]
+
+appropriate random walk 
+$$
+S_i = \frac{1}{\sqrt K} ,\quad N_k \sim iid \, N(0,1)
+$$
+
+- Random walk and its expansion using 25 B-Spline basis functions 
+```{r}
+Wiener = cumsum(rnorm(10000)/100) # random walk on [0,K], K=10^4
+plot.ts(Wiener, xlab="", ylab="")
+
+B25.basis = create.bspline.basis(rangeval=c(0,10000),
+                                 nbasis=25)
+Wiener.fd = smooth.basis(y=Wiener, fdParobj=B25.basis) # create functional data object Wiener.fd 
+lines(Wiener.fd, lwd=3)
+```
+
+
+
+***
+## 1.2 Sample Mean and covariance 
+raw data -> functional objects. by suitable basis expansion 
+
+
+**pointwise mean & pointwise standard deviation** 
+$$
+\bar{X}_N(t) = \frac{1}{N} \sum_{n=1}^N X_n(t) \quad SD_X(t) = \{\frac{1}{N-1} \sum_{n=1}^N (X_n(t)-\bar{X}_N(t))^2 \} ^{1/2}
+$$
+
+### Example 1.2.1 [Pointwise mean and SD]
+```{r}
+N=50
+W.mat=matrix(0, ncol=N, nrow=10000) 
+for(n in 1:N){
+  W.mat[,n] = cumsum(rnorm(10000))/100
+}
+
+B25.basis = create.bspline.basis(rangeval=c(0,10000),
+                                 nbasis=25)
+W.fd = smooth.basis(y=W.mat,
+                    fdParobj = B25.basis)
+
+plot(W.fd,ylab='',xlab='',col='gray',lty=1)
+W.mean <- mean.fd(W.fd$fd)
+W.sd <- std.fd(W.fd$fd)
+lines(W.sd, lwd=3);lines(W.mean,lty=2,lwd=3)
+```
+pointwise s.d : typical variablity of curves at time point *t* 
+
+But no information on how values of curve at point *t* relate to point *s*
+
+
+**sample covariance function**
+$$
+\hat c(t,s) = \frac{1}{N-1}\sum_{n=1}^N (X_n(t)-\bar X_N(t)) (X_n(s)-\bar X_N(s))
+$$
+interpretaion as variance covariance matrix 
+
+### Example 1.2.2 [Sample covariance function]
+
+```{r}
+# Use the object W.fd generated in the previous example.
+W.cov = var.fd(W.fd$fd) # $fd extracts function values
+grid=(1:100)*100
+
+W.cov.mat=eval.bifd(grid,grid,W.cov)
+persp(grid,grid,W.cov.mat,xlab='s',
+      ylab='t',zlab='c(s,t)')
+contour(grid,grid,W.cov.mat,lwd=2)
+```
+
+$\hat c(t,s)$ is given by $c(t,s)=min(t,s)$
+
+
+***
+## 1.3 Principal component functions 
+
+EFPC's : Estimated fuctional principal components     
+related to the sample covariance function $\hat c(t,s)$
+
+
+- ceneterd function 
+$$
+X_n(t) - \bar X_n(t) \approx \sum_{j=1}^p \ \xi_{n j} \hat v_j(t)
+$$
+
+p is much smaller than M
+
+$\hat v_j(t)$ are computed from the observed functions $X_1, X_2, .. X_N$ after converting them to functional objects 
+
+
+
+```{r}
+W.pca = pca.fd(W.fd$fd, nharm=4)
+plot(W.pca$harmonics, lwd=3)
+W.pca$varprop
+```
+
+$\hat v_1$ black line : most pronounced pattern of the deviation from the mean function of a randomly selected trajectory. 
+
+coefficient $\xi _{n1}$ quantifies the contribution of $\hat v_1$ to its shape. 
+
+$\hat v_2$ red line : second most important mode of mean functions of 50 random walks. It is second msot important mode of variability which is orthogonal to $\hat v_1$
+
+
+\\
+
+$\xi _{nj}$ is called the score of $X_n$ with respect to $\hat v_j$ .; the smaller the percentages, the smaller the scores. 
+
+EFPC's $\hat v_j$ are orthonormal 
+$$
+\int \hat v_j(t) \hat v_i(t) dt =  
+\left\{ 
+  \begin{array}{ c l }
+    0 & \quad \textrm{if } j \ne i \\
+    1 & \quad \textrm{if } j = i
+  \end{array}
+\right.
+$$
+
+
+
+
 
