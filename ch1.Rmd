@@ -2,16 +2,18 @@
 title: "kokoszka FDA CH1"
 author: Noa Jeong 
 output: 
+  
   pdf_document : default
   html_document : default
+geometry: margin=1in
 date: "2024-07-12"
 ---
+
 
 - github : 
 https://minitistics.tistory.com/27
 
 # 1. First steps in the analysis of functional data 
-
 ```{r}
 rm(list=ls())
 ```
@@ -30,7 +32,7 @@ $$
 $N$ : number of curves
 $J_n$ : observed time point 
 
-
+\newpage
 ## 1.1 Basis Expansion 
 
 $$
@@ -77,7 +79,8 @@ lines(Wiener.fd, lwd=3)
 
 
 
-***
+\newpage 
+
 ## 1.2 Sample Mean and covariance 
 raw data -> functional objects. by suitable basis expansion 
 
@@ -110,7 +113,7 @@ pointwise s.d : typical variablity of curves at time point *t*
 But no information on how values of curve at point *t* relate to point *s*
 
 
-**sample covariance function**
+- **sample covariance function**
 $$
 \hat c(t,s) = \frac{1}{N-1}\sum_{n=1}^N (X_n(t)-\bar X_N(t)) (X_n(s)-\bar X_N(s))
 $$
@@ -132,7 +135,8 @@ contour(grid,grid,W.cov.mat,lwd=2)
 $\hat c(t,s)$ is given by $c(t,s)=min(t,s)$
 
 
-***
+\newpage 
+
 ## 1.3 Principal component functions 
 
 EFPC's : Estimated fuctional principal components     
@@ -163,7 +167,6 @@ coefficient $\xi _{n1}$ quantifies the contribution of $\hat v_1$ to its shape.
 $\hat v_2$ red line : second most important mode of mean functions of 50 random walks. It is second msot important mode of variability which is orthogonal to $\hat v_1$
 
 
-\\
 
 $\xi _{nj}$ is called the score of $X_n$ with respect to $\hat v_j$ .; the smaller the percentages, the smaller the scores. 
 
@@ -178,7 +181,505 @@ $$
 \right.
 $$
 
+\newpage 
 
+## 1.4 Analysis of BOA stock returns 
+
+Bank of America 
+
+1997.4.9 - 2007.4.2, 9:30 ~ 16:00 stock values recorded every minute 
+
+$t \in (0,6.5)$
+
+2511 days of data, each day consisting 390 measurements   
+
+
+
+functional observation : *cumulative log-return*
+$$
+R_n(t) := log(P_n(t)) - log(P_n(0)) \approx \frac{P_n(t)-P_n(0)}{P_n(0)}
+$$
+
+$R_n(t)$ : how an investment, made at opening, evolves over the course of the day 
+
+$P_n(t)$ : value of the stock on the day n at time t
+
+- plot of first ten cumulative log returns for BOA
+
+```
+#install.packages('striprtf')
+#install.packages('readr')
+library(striprtf)
+library(readr)
+
+extracted_text <- striprtf::read_rtf('Bank of America Data.rtf')
+```
+
+
+```{r}
+BOA = read.table('BOA.txt', header=TRUE)
+Dates <- dimnames(BOA)[[1]] # 2511 days
+BOA <- data.matrix(BOA)
+Outlier = which(Dates=='08/26/2004')
+BOA <- BOA[-Outlier,]
+```
+
+- Plot of first 10 cumulative log returns for BOA 
+```{r}
+N <- dim(BOA)[1] # 2510 
+M <- dim(BOA)[2] # 390 measurements 
+Times <- seq(0,6.5,length=M)
+log_BOA <- log(BOA)-matrix(log(BOA)[,1], nrow=N, ncol=M) # R_n(t)
+bspline_basis <- create.bspline.basis(rangeval=c(0,6.5), norder=4, nbasis=200)
+log_BOA_f <- Data2fd(Times,t(log_BOA), basisobj = bspline_basis)
+plot(log_BOA_f[1:10], xlab='',ylab='',lwd=1.5)
+```
+
+- plot of mean function of BOA cumulative returns. Pointwise 95% confidence intervals are included in red. 
+```{r}
+muhat <- mean.fd(log_BOA_f)
+sdhat <- sd.fd(log_BOA_f)
+SE_hat_U <- fd(basisobj = bspline_basis) # create upper CI bound 
+SE_hat_L <- fd(basisobj = bspline_basis) # create lower CI bound
+SE_hat_U$coefs <- 2*sdhat$coefs/sqrt(N) + muhat$coefs
+SE_hat_L$coefs <- -2*sdhat$coefs/sqrt(N) + muhat$coefs
+plot.fd(SE_hat_U, ylim=c(-0.002,0.002), col='red',lty=2,xlab='',ylab='')
+plot.fd(SE_hat_L, add=T, col='red', lty=2)
+plot.fd(muhat, add=T)
+```
+
+
+- plot of first four PCs of BOA 
+```{r}
+log_BOA_pca <- pca.fd(log_BOA_f,nharm=4)
+plot(log_BOA_pca$harmonics,lwd=1)
+```
+
+
+
+
+\newpage 
+## 1.5 Diffusion tensor imaging  
+DTI : magnetic resonance imaging methodology, to measure the diffusion of water in the brain.   Utilize DTI to generate image of white matter in the brain. 
+
+Fractional anisotropy is a value 0~1 which measure the level of anisotropy, therefore the quantity of white matter at a particular location. 
+
+376 patients, each tract measure at 93 equally spaced location. 
+
+$t_{j,n}$ : spatial rather than temporal location. 
+```{r}
+#install.packages('refund')
+library(refund)
+data(DTI)
+str(DTI)
+```
+
+
+```{r}
+Y <- DTI$cca
+Y <- Y[-c(126,130,131,125,319,321),] # missing values
+N <- dim(Y)[1]; M <- dim(Y)[2] 
+# N : number of patients(observations/functions)
+# M : number of locations(time/spatial observed point)
+
+argvals <- seq(0,1,length=M)
+data_basis <- create.bspline.basis(c(0,1), # interval
+                                   nbasis=10) # number of basis
+Y.f <- Data2fd(argvals, t(Y), data_basis) # create smooth functions that fit scatter plot data 
+
+```
+
+
+- plot of fractional anistoropy tract profiles oft he corpus collosum. 
+```{r}
+#dev.new(width=8,height=6)
+plot(Y.f,lty=1,col='gray',xlab='',ylab='',ylim=c(0.1,0.9)) # Individuals(376 patients) tracts are plotted 
+lines(mean.fd(Y.f), lwd=2) # mean function 
+# green, yellow, red indicates respecitvely one, two, three pointwise s.d. from the mean. 
+lines(mean.fd(Y.f)+std.fd(Y.f), lwd=2,lty=2,col='green')
+lines(mean.fd(Y.f)-std.fd(Y.f), lwd=2,lty=2,col='green')
+lines(mean.fd(Y.f)+2*std.fd(Y.f), lwd=2,lty=2,col='yellow')
+lines(mean.fd(Y.f)-2*std.fd(Y.f), lwd=2,lty=2,col='yellow')
+lines(mean.fd(Y.f)+3*std.fd(Y.f), lwd=2,lty=2,col='red')
+lines(mean.fd(Y.f)-3*std.fd(Y.f), lwd=2,lty=2,col='red')
+```
+
+data follows an analog of the classic three standard deviation rule well, with nearly all curves falling between the red lines 
+
+
+
+
+
+
+\newpage 
+## 1.6 Chapter 1 Problems 
+
+### 1.1 
+```{r}
+rm(list=ls())
+library(fda)
+data(pinch)
+
+str(pinch) # 151 measurements of pinch for 20 replications(curves)
+```
+
+
+#### (a)
+
+Convert the pinch data to functional objects using B-splines of order four(cubic splines) and plot the 20 smoothed curves on one graph 
+```{r}
+dim(pinch)
+N <- dim(pinch)[1]; M <- dim(pinch)[2] # 151 20
+```
+
+
+
+
+```{r}
+argvals <- seq(1,20) # 20 replications 
+spline.basis <- create.bspline.basis(rangeval = c(1,20),
+                                     nbasis=15, norder=4)
+
+pinch.f <- Data2fd(argvals,t(pinch), spline.basis ) 
+plot(pinch.f, col='gray',xlab='',ylab='')
+```
+
+#### (b)
+
+Calculate the pointwise mean and SD and add them to plot. 
+
+```{r}
+mean.pinch <- mean.fd(pinch.f)
+sd.pinch <- sd.fd(pinch.f)
+plot(pinch.f, col='gray',xlab='',ylab='',ylim=c(-5,11))
+lines(mean.pinch, lwd=2)
+lines(mean.pinch+sd.pinch, col='red',lwd=2,lty=2)
+lines(mean.pinch-sd.pinch, col='red',lwd=2,lty=2)
+lines(mean.pinch+2*sd.pinch, col='blue',lwd=2,lty=2)
+lines(mean.pinch-2*sd.pinch, col='blue',lwd=2,lty=2)
+```
+
+#### (c)
+Graph the persepctive and contour plots of the sample covariance function $\hat c(t,s)$ of the pinch curves. 
+```{r}
+#pinch.f$fd
+cov.pinch <- var.fd(pinch.f)
+#cov.pinch$coefs
+grid <- seq(1,20,length=N)
+
+cov.mat.pinch <- eval.bifd(grid,grid,cov.pinch)
+persp(grid,grid,cov.mat.pinch,
+      xlab='s',ylab='t',zlab='c(t,s)')
+contour(grid,grid,cov.mat.pinch)
+```
+
+
+#### (d)
+
+Graph the first four EFPC's of the pinch data. How many components do you need to explain 90% of variation? 
+
+```{r}
+pinch.pca <- pca.fd(pinch.f, nharm=4)
+plot(pinch.pca$harmonics, lwd=3)
+
+pinch.pca$varprop # only one component needed to explain 90% of variation 
+```
+
+
+\newpage
+
+### 1.2 
+United states Federal Reserve interest rates `FedYiedlcurve`, which contains the monthly interest rates from January 1982 to June 2009 
+
+x values : maturity terms of 3,6,12,60,84,120 months. $t_j$ 
+
+y values : interest rates of the U.S. Treasury obligations due in x months. $x_n(t_j)$ , where $n$ is a month in. the range 1982.1 to 2009.6 
+
+```{r}
+rm(list=ls())
+library(fds);library(fda)
+```
+
+#### (a) 
+On one graph, plot the interest rate $x(t_j)$ for Jan 1982 - Jun 2009 against the maturity terms $t_j$. How do the interest rates in these 2 months compare? 
+```{r}
+data(FedYieldcurve)
+yield <- FedYieldcurve ; terms = yield$x
+plot(terms, yield$y[,1], pch=15, ylab='Yield', ylim=c(0,16)) # square 
+points(terms, yield$y[,330], pch=16) # circle . lower interest rates at June 2009
+```
+
+#### (b)   
+
+Convert the yield data to functional objects using bspline basis with 4 basis functions. Calculate and plot the mean yield function. What is the average behavior of interest rates as function of maturity? 
+
+```{r}
+max(yield$y)
+min(yield$y)
+M <- dim(yield$y)[1] ; N <- dim(yield$y)[2] # 6 330
+
+bspline_basis <- create.bspline.basis(range=c(3,120), nbasis=4)
+yield.fd <- Data2fd(terms,yield$y,basisobj = bspline_basis)
+
+plot(yield.fd, lty=1, col='gray', xlab='terms', ylab='yield')
+
+yield.mean <- mean.fd(yield.fd)
+lines(yield.mean,lwd=2,col='red')
+```
+
+#### (c)
+```{r}
+yield.pca <- pca.fd(yield.fd, nharm=1)
+plot(yield.pca$harmonics,lwd=3)
+
+yield.pca$varprop
+```
+first component explains a lot of patterns of the deviation from the mean functions of yield. 
+
+\newpage 
+### 1.3 
+Data for monthly SST(in degrees C) in various regions of the south Pacific ocean from 1950 to 2013. Using the `NINO3` column, treat data for each calander year as a functional observation. 
+```{r}
+rm(list=ls())
+?sd.fd
+```
+
+```{r}
+nino <- read.table('ninoSST.txt')
+head(nino)
+
+library(fda)
+year <- nino[,1]
+month <- 1:12
+
+#SSTmat <- matrix(data=NA, nrow=12, ncol=64)
+#count=1
+#for(yr in year){
+#  tmp <- nino[which(nino$V1==yr),]$V4
+#  SSTmat[,count] <- tmp
+#  count <- count+1
+#}
+
+SSTmat <- as.matrix(t(nino[,-1]))
+rownames(SSTmat) = NULL
+colnames(SSTmat) <- seq(1950,2013)
+dim(SSTmat) # month, 1950-2013 years
+
+head(SSTmat)
+```
+
+#### (a) 
+Using Fourier basis functions, convert the data into a functional object `ninofd` containing 64 annuals curves and plot these smoothed curves. 
+```{r}
+N <- dim(SSTmat)[2] # 64
+M <- dim(SSTmat)[1] # 12 
+argvals <- seq(1,12)
+fourier.basis = create.fourier.basis(rangeval=c(1,12),
+                                     nbasis=M)
+ninofd <- Data2fd(argvals, SSTmat, fourier.basis)
+plot(ninofd, col='gray')
+lines(mean.fd(ninofd),col='black',lwd=3)
+```
+
+#### (b)
+The years of 1965, 1972, 1982, 1997 were pronounced El Nino years. emphasize the curves in the plot by making them thick red. 
+
+Emphasize the pronounced La Nina years of 1955, 1973, 1975, 1988, 1999 with thick blue. 
+```{r}
+#Pronounced ElNino Years - characterized by unusually warm SST
+eln = c(1965, 1972, 1982, 1997)
+#Pronounced La Nina Years - characterized by unusually cold SST
+lan = c(1955, 1973, 1975, 1988, 1999)
+
+elnn = match(eln,year)
+lann = match(lan,year)
+ELNmat = SSTmat[,elnn]
+LANmat = SSTmat[,lann]
+
+ELNfd <- Data2fd(argvals, ELNmat, fourier.basis)
+LANfd <- Data2fd(argvals, LANmat, fourier.basis)
+plot(ninofd, col='gray')
+lines(mean.fd(ninofd),col='black',lwd=3)
+lines(ELNfd,col='red',lwd=3,lty=1)
+lines(LANfd,col='blue',lwd=3,lty=1)
+```
+
+\newpage 
+### 1.4 
+
+\newpage 
+### 1.5 
+Matern covariance function leads to general family of stationary Gaussian processes. 
+
+- covariance function 
+$$
+C(t,s) = \frac{\sigma^2}{\Gamma(\nu) 2^{\nu-1}} (\frac{\sqrt{2\nu} |t-s|}{\rho})^{\nu} K_{\nu}(\frac{\sqrt{2\nu} |t-s|}{\rho}), \quad \nu>0
+$$
+
+$\sigma^2$ : variance parameter     
+$\nu$ : smoothness parameter.    
+$\rho$ : range parameter     
+$K_{\nu}$ : modified Bessel function of the second kind.     
+
+k times continuously differentiable for any $\nu$.   
+
+
+
+
+#### (1)
+
+Simulate plot iid mean zero Marten process with 
+$\nu = 1/2, \, \nu = 2, \, \nu = 4$. Set $\sigma^2=1$ and $\rho=1$. 
+temporal grid with 50 evenly spaced points. 
+
+#### (2) 
+Plot the first four EFPCS for each value of $\nu$, comment on any similarities / differences 
+
+#### (3)
+Plot the explained variance for each $\nu$, comment on any similarities/differences.
+
+#### (4)
+Using your preferred method, create a plot of the covariance surface for each $\nu$, comment on any similarities/differences.
+
+
+
+```{r}
+matern_cov <- function(t,s,sigma2,nu,rho){
+  if(t==s){
+    return(sigma2)
+  } else{
+  factor1 <- sigma2 / (gamma(nu) * 2^(nu-1))
+  factor2 <- (sqrt(2*nu)*abs(t-s) / rho)^nu
+  factor3 <- besselK(sqrt(2*nu)*abs(t-s)/rho, nu)
+  return(factor1*factor2*factor3)
+  }
+} # each element in covariance 
+
+# parameters 
+sigma2 <- 1
+rho <- 1
+nu_values <- c(0.5,2,4)
+time_points <- seq(0, 1, length.out = 50)
+
+# create 50x50 matern_cov matrix 
+create_cov_mat <- function(time_points, sigma2, nu, rho){
+  n <- length(time_points)
+  cov_mat <- matrix(0,n,n)
+  for(i in 1:n){
+    for(j in 1:n){
+      cov_mat[i,j] <- matern_cov(time_points[i], time_points[j],sigma2, nu, rho)
+    }
+  }
+  return(cov_mat)
+}
+  
+# simulation functions 
+simul <- function(n_sim, time_points, sigma2, nu, rho){
+  n <- length(time_points)
+  cov_mat <- create_cov_mat(time_points, sigma2, nu, rho)
+  simulation <- mvrnorm(n_sim, mu=rep(0,n), Sigma = cov_mat)
+  return(simulation)
+}
+```
+
+```{r fig.align='center'}
+set.seed(1)
+# Simulation 100 times 
+
+for(nu in nu_values){
+  simul_result <- simul(100, time_points, sigma2,nu,rho) 
+  # (1)
+  # fda package 
+  matplot(time_points,t(simul_result),type='l',col='gray',lty=1,
+          xlab='Time',ylab='Value',main=paste('nu =',nu))
+  
+  # (2)
+  basis <- create.bspline.basis(rangeval=c(0,1), nbasis=5)
+  fd_obj <- Data2fd(time_points,t(simul_result), basis)
+  pca_result <- pca.fd(fd_obj,nharm=4)
+  plot(pca_result$harmonics,lwd=3)
+  
+  # (3)
+  explained_variance <- cumsum(pca_result$values)/sum(pca_result$values)*100
+  plot(explained_variance,type='b')
+  
+  
+  # (4)
+  fd_cov <- var.fd(fd_obj)
+  grid <- seq(0,1,length=50)
+  fd_cov_mat <- eval.bifd(grid,grid,fd_cov)
+  persp(grid,grid,fd_cov_mat,xlab='s',ylab='t',zlab='C(t,s)')
+  contour(grid,grid,fd_cov_mat)
+
+}
+```
+
+
+
+
+
+\newpage (GPT code..)
+```{r}
+# Load necessary library for matrix operations
+library(MASS)
+
+# Define the covariance function for the Matern process
+matern_cov <- function(h, nu, sigma2, rho) {
+  if (h == 0) {
+    return(sigma2)
+  } else {
+    factor1 <- (2^(1 - nu)) / gamma(nu)
+    factor2 <- (sqrt(2 * nu) * h / rho) ^ nu
+    factor3 <- besselK(sqrt(2 * nu) * h / rho, nu)
+    return(sigma2 * factor1 * factor2 * factor3)
+  }
+}
+
+# Parameters
+sigma2 <- 1
+rho <- 1
+nu_values <- c(0.5, 2, 4)
+time_points <- seq(0, 1, length.out = 50)
+
+# Function to create covariance matrix
+create_cov_matrix <- function(time_points, nu, sigma2, rho) {
+  n <- length(time_points)
+  cov_matrix <- matrix(0, n, n)
+  for (i in 1:n) {
+    for (j in 1:n) {
+      cov_matrix[i, j] <- matern_cov(abs(time_points[i] - time_points[j]), nu, sigma2, rho)
+    }
+  }
+  return(cov_matrix)
+}
+
+# Simulation function
+simulate_matern_process <- function(n_sim, time_points, nu, sigma2, rho) {
+  n <- length(time_points)
+  cov_matrix <- create_cov_matrix(time_points, nu, sigma2, rho)
+  simulations <- mvrnorm(n_sim, mu = rep(0, n), Sigma = cov_matrix)
+  return(simulations)
+}
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Plotting function
+plot_simulations <- function(simulations, time_points, nu) {
+  matplot(time_points, t(simulations), type = 'l', col = 'gray', lty = 1, 
+          main = paste('Matérn Process Simulations (nu =', nu, ')'), 
+          xlab = 'Time', ylab = 'Value')
+  grid()
+}
+
+# Simulate and plot for each nu value
+par(mfrow = c(3, 1)) # 3 plots in one column
+for (nu in nu_values) {
+  simulations <- simulate_matern_process(100, time_points, nu, sigma2, rho)
+  plot_simulations(simulations, time_points, nu)
+}
+
+```
 
 
 
