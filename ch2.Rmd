@@ -2,9 +2,9 @@
 title: "kokoszka FDA CH2"
 author: Noa Jeong 
 output: 
-  html_document: default
   pdf_document:  
     latex_engine: xelatex
+  html_document: default
 ---
 
 # 2. Further topics in exploratory analysis of functional data
@@ -13,11 +13,10 @@ output:
 rm(list=ls())
 ```
 
-```{r}
+```{r message=F}
 library(fda)
 ```
 
-\newpage
 
 ## 2.1 Derivatives
 
@@ -48,8 +47,10 @@ $$
 *Note. Bessel function approx*   
 
 $$
-K_{5/2}(x)= \sqrt{\frac{\pi}{2x}} \exp(−x)(1+ \frac{3}{x}+ \frac{3}{x^2}) \\
+\begin{aligned}
+K_{5/2}(x)= \sqrt{\frac{\pi}{2x}} \exp(−x)(1+ \frac{3}{x}+ \frac{3}{x^2}) \\ 
 x = \sqrt{5}|t-s|
+\end{aligned}
 $$
 
 simulate above Matern process on 100 evenly spaced time points on [0,1]
@@ -148,7 +149,8 @@ suppose data $Y \in \mathbb R^N$
 $$
 \hat Y = \textbf{H}_\lambda Y
 $$
-- GCV score      
+
+-  GCV score      
 
 minimize $\lambda$ which minimize GCV 
 $$
@@ -327,8 +329,10 @@ $h_n(t)$ = subject specific time.
 
 assume that observed curves $X_n(t)$ are 
 $$
+\begin{aligned}
 X_n(t) = X_n^{*}(h_n(t)) \\ 
 X_n^{*}(t) = X_n(h_n^{-1}(t))
+\end{aligned}
 $$
 
 where $X_n^{*}(t)$ are properly aligned curves     
@@ -498,6 +502,7 @@ lines(new_y_fd,col=2)
 \newpage 
 
 ### 2.4 
+
 Consider the DTI data in Section 1.5.
 
 ```{r message=F}
@@ -602,10 +607,48 @@ plot(pca_a$harmonics)
 plot(pca_b$harmonics)
 ```
 
-####(d) 
+#### (d) 
 In your opinion, was curve alignment necessary for this data? Explain.
 
-Not necessary but it will slightly enhance the performance.   
+Not necessary  
+
+```{r}
+warpFunctions <- regList$warpfd
+APList <- AmpPhaseDecomp(xfd=data_smooth$fd, # not aligned 
+                        yfd=conreg, # aligned
+                        hfd=warpFunctions)
+
+APList$RSQR
+APList$MS.amp
+APList$MS.pha
+```
+
+
+***
+Paper : 
+*Combining Registration and Fitting for Functional Model*
+
+$$
+\begin{aligned} 
+MS_{total} &= E \int [x(t)-\mu(t)]^2dt \\
+& = C E \int y^2(t)dt - \int \mu^2(t)dt \\ 
+&= C E \int [y(t)-\nu(t)]^2 dt \\
+&+ C \int \nu^2(t) dt - \int \mu^2 (t) dt
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+MS_{amp} = C E \int [y(t)-\nu(t)]^2 dt \\ 
+MS_{phase} = C \int \nu^2(t) dt - \int \mu^2 (t) dt
+\end{aligned}
+$$
+
+If no registration, then C=1, $\mu = \nu$ and $MS_{phase}=0$   
+
+Faulty registration may lead to $MS_{phase} \le 0$ & $MS_{amp} > MS_{total} = 0 $ 
+
+
 
 \newpage 
 
@@ -617,29 +660,149 @@ $$
 f(x) = \left\{ 
   \begin{array}{ c l }
     a_0 \exp\{ -(1-(\frac{x-c_0}{r_0})^2)^{-1}\} & \quad \textrm{if } |x-c_0| < r_0 \\
-    0 & \quad \textrm{if } j = i
+    0 & \quad \textrm{ otherwise } 
   \end{array}
 \right.
 $$
 
+```{r message=F}
+rm(list=ls())
+library(fda)
+library(MASS)
+```
+
 #### (a) 
 Simulate a functional sample over the unit interval each with a sample size of 50 from the Matern process. 
-For the first half of the sample, set the mean function equal to the the bump function with parameters $(c0, r0, a0) = (3/8, 1/4, 5)$. 
-For the second half use $(c0, r0, a0) = (5/8, 1/4, 5)$. You may choose the values for the Matern covariance function as well as the number of points sampled per curve. Plot all of the curves and include a curve for the overall mean function.
+For the first half of the sample, set the mean function equal to the bump function with parameters $(c0, r0, a0) = (3/8, 1/4, 5)$. 
+For the second half use $(c0, r0, a0) = (5/8, 1/4, 5)$. 
+You may choose the values for the Matern covariance function as well as the number of points sampled per curve. 
+Plot all of the curves and include a curve for the overall mean function.
+
 
 ```{r}
-
+# bump function 
+fx <- function(x,c0,r0,a0){
+  if(abs(x-c0)<r0){
+    a0*exp( -( 1 - ( ((x-c0)/r0))^2 )^(-1) )
+  }else{0}
+}
 ```
+
+
+```{r}
+# Matern process sample 
+matern_cov <- function(t,s,sigma2,nu,rho){ 
+  if(t==s){
+    return(sigma2) 
+  } else{
+    factor1 <- sigma2 / (gamma(nu) * 2^(nu-1))
+    factor2 <- (sqrt(2*nu)*abs(t-s) / rho)^nu
+    factor3 <- besselK(sqrt(2*nu)*abs(t-s)/rho, nu) 
+    return(factor1*factor2*factor3)
+    }
+} # each element in covariance
+
+# Parameters for the Matérn process
+sigma2 <- 1 # Variance
+nu <- 1.5 # Smoothness parameter
+rho <- 1 # Range parameter
+time_points <- seq(0, 1, length.out = 50)  # 50 time points 
+n <- 50  # sample size 
+
+# create 50x50 matern_cov matrix
+create_cov_mat <- function(time_points, sigma2, nu, rho){
+  cov_mat <- matrix(0,n,n)
+  for(i in 1:n){
+    for(j in 1:n){
+      cov_mat[i,j] <- matern_cov(time_points[i],
+                                 time_points[j],
+                                 sigma2, nu, rho)
+    } 
+  }
+  return(cov_mat) 
+}
+
+cov_mat <- create_cov_mat(time_points,sigma2,nu,rho)
+```
+
+
+```{r}
+# bump function param
+c0_1 <- 3/8
+r0_1 <- 1/4
+a0_1 <- 5
+c0_2 <- 5/8
+r0_2 <- 1/4
+a0_2 <- 5
+
+# bump function = mean function 
+bump_1 <- sapply(time_points, fx, c0 = c0_1, r0 = r0_1, a0 = a0_1)
+bump_2 <- sapply(time_points, fx, c0 = c0_2, r0 = r0_2, a0 = a0_2)
+
+matern_sample_1 <- mvrnorm(n/2,
+                           mu=bump_1,
+                           Sigma=cov_mat)
+matern_sample_2 <- mvrnorm(n/2,
+                           mu=bump_2,
+                           Sigma=cov_mat)
+dim(matern_sample_1)
+
+matern_sample <- rbind(matern_sample_1,matern_sample_2) 
+dim(matern_sample)
+# 50 time points, and each 50 matern samples 
+
+matplot(time_points,t(matern_sample),type='l',col='gray',lty=1)
+lines(time_points, colMeans(matern_sample), col = 'blue', lwd = 2)
+```
+
 
 #### (b) 
-Align the curves using continuous registration. Plot the resulting curves and include a mean function. Comment on any di↵erences with (a) and if the registered curves exhibit any odd patterns.
+Align the curves using continuous registration. Plot the resulting curves and include a mean function. Comment on any differences with (a) and if the registered curves exhibit any odd patterns.
 ```{r}
+basis <- create.bspline.basis(c(0,1), nbasis=20) 
+fd_obj <- Data2fd(time_points,t(matern_sample), basis)
+```
+
+
+```{r results='hide'}
+regList <- register.fd(fd_obj)
+conreg <- regList$regfd
+```
+
+
+```{r results='hide'}
+plot(conreg,col='gray')
+
+conreg_values <- eval.fd(time_points, fd_obj)
+lines(time_points,rowMeans(conreg_values),lwd=2,col='blue') 
+```
+
+#### (c)     
+Carry out an FPCA with one PC on the unaligned and aligned curves separately. For each, do a simple linear regression of the score onto a dummy variable (coded 0/1) indicating which type of mean the function had (i.e. is it from the first or second half of the sample). 
+Calculate a p-value to determine if the estimated slope parameters you get are significant. Compare with the aligned and unaligned curves. What did aligning do to the p-value? You may want to rerun your simulations a few times to see how the p-values change.
+
+```{r}
+pca_1 <- pca.fd(fd_obj,nharm=1)
+pca_1$varprop
+
+pca_2 <- pca.fd(conreg,nharm=1)
+pca_2$varprop
+
+# regression
+x1 <- pca_1$scores # 50 x 4
+y1 <- rep(c(0,1),each=25)
+x2 <- pca_2$scores
+y2 <- rep(c(0,1),each=25)
+
+fit1 <- lm(x1~y1)
+summary(fit1)
+
+fit2 <- lm(x2~y2)
+summary(fit2)
 
 ```
 
-####(c) 
-Carry out an FPCA with one PC on the unaligned and aligned curves separately. For each, do a simple linear regression of the score onto a dummy variable (coded 0/1) indicating which type of mean the function had (i.e. is it from the first or second half of the sample). Calculate a p-value to determine if the estimated slope parameters you get are significant. Compare with the aligned and unaligned curves. What did aligning do to the p-value? You may want to rerun your simulations a few times to see how the p-values change.
-####(d) 
+#### (d) 
 Come up with one potential setting/application where you might lose something if you align. Make up whatever scenario you like, but think it through.
 
 
