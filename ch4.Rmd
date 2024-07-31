@@ -1,0 +1,483 @@
+---
+title: "kokoszka FDA CH4"
+author: "Noa Jeong"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# 4. Scalar-on-function regression 
+
+
+***Scalar-on-function regression : ***
+$$
+Y_i = \int \beta(s) X_i(s) ds + \epsilon _i
+$$
+
+$Y_i$ : response are scalars 
+$X_i(s)$ : regressors are curves 
+
+perfect fit -> erratic, noisy   
+
+
+
+
+\newpage
+
+## 4.1 Examples 
+
+`gasoline` in `refund` package 
+
+octane rating $Y$, spectral curve $X$        
+e.g. $g: L^2 \to R$ such that $Y \approx g(X)$
+
+
+### Problems 4.8 
+
+```{r message=FALSE}
+rm(list=ls())
+library(fda)
+library(refund); library(ggplot2)
+#install.packages('dplyr')
+#install.packages('reshape2')
+library(dplyr); library(reshape2)
+set.seed(9000)
+```
+
+- Octane rating of 60 gasoline samples 
+```{r}
+plot(gasoline$octane, xlab="Gasoline sample",ylab="Octane
+    rating", pch=15)
+```
+
+
+- Near infrared spectrum of gasoline sample with index 1 
+```{r}
+par(ps = 12, cex = 1, cex.lab=1.7, cex.axis=1.4, cex.main=1.7,
+     cex.sub=1,mar=c(4.25,4.5,1,1))
+plot.ts(gasoline$NIR[1,], lw=2, xlab="Wavelength", ylab="
+Spectrum")
+```
+
+- differences between the spectrum of the samples with indexes 2 and 1(continuous) and 5 and 1 (dashed)
+```{r}
+plot.ts(gasoline$NIR[2,]- gasoline$NIR[1,], lw=2, lty=1, xlab=
+    "Wavelength", ylab="Difference")
+lines(gasoline$NIR[5,]- gasoline$NIR[1,], lw=2, lty=2, xlab="
+    Wavelength", ylab="Difference")
+```
+
+
+
+
+### Problems 4.9 
+
+$N=215$ meat samples. 
+
+`tecator` in the R package `fda.usc` 
+
+3 scalar responses for each meat sample : fat, water, protein content in percent 
+
+
+```{r message=FALSE}
+#install.packages('fda.usc')
+library(fda.usc);  data("tecator");  names(tecator)
+```
+
+- Absorbance curves of 100 meat samples 
+
+```{r}
+absorp <- tecator$absorp.fdata
+Fat20 <- ifelse(tecator$y$Fat < 20, 0, 1) * 2 + 2 # fat content of less than 20% are red
+plot(tecator$absorp.fdata, 
+     col = Fat20, 
+     ylab=" ", xlab="Wavelength", main="Absorbances")
+```
+
+- Derivatives of these curves
+```{r}
+absorp.d1 <- fdata.deriv(absorp, nderiv = 1)
+plot(absorp.d1, col = Fat20, ylab=" ",
+xlab="Wavelength", main="Derivatives")
+```
+
+
+\newpage 
+## 4.2 Standard regression theory review 
+
+standard linear model 
+$$
+Y = X \beta + \epsilon 
+$$
+
+$L_x$ : subspace of $\mathbb R^N$ spanned by columns of X 
+
+$X\hat\beta$ is projection $\hat\theta$ of Y onto $L_x$ . -> $\hat\theta$ is the unique vector minimizing the length of $Y-\theta$ over $\theta \in L_x$ 
+
+$\hat\beta$ can uniquely determine only if the **columns of $X$ are linearly independent** 
+
+$Y-\hat\theta$ is orthogonal to $L_x$ <=> $X^T(Y-\hat\theta)=0$
+
+
+Thus, least square estimator (unbiased)
+$$
+\hat\beta = (X^TX)^{-1}X^TY
+$$
+
+$$
+\hat\beta = (X^TX)^{-1}X^T(X\beta+\epsilon) = \beta + (X^TX)^{-1}X^T\epsilon
+$$
+
+To ensure estimator is consistent, $\hat\beta \buildrel P \over\longrightarrow \beta$ as $N \rightarrow \infty$ if 
+$$
+N^{-1}X^T X \rightarrow \Sigma_X \quad \&
+\quad N^{-1}X^T \epsilon \buildrel P \over\longrightarrow 0
+$$
+
+\newpage 
+
+## 4.3 Difficulties specific to functional regression 
+
+functional regression 
+
+$$
+Y = \int \beta(t) X(t) dt + \epsilon 
+$$
+
+cannot compute partial derivatives to find minimum 
+
+$$
+c_x(t,s) = E[X(t)X(s)], \quad c_{XY}(t) = E[X(t)Y]
+$$
+
+assuming $X$ and $\epsilon$ are independent then 
+
+$$
+c_{XY}(t) =  \int c_x(t,s)\beta(s)ds
+$$
+
+(proof in Problem 4.6)
+
+
+Assuming $E(X(t))=0$, kernel $c_x(t,s)$ is the covariance function of random function X, and also
+$$
+c_{XY}(t) =  \int c_x(t,s)\beta(s)ds = C_x(\beta)
+$$
+
+where $C_x$ is the integral operator with kernel $c_x(t,s)=\sum_{j=1}^\infty \lambda_j v_j(t) v_j(s)$ 
+
+
+
+
+
+approximation 
+$$
+Y_i = \int \beta(s) X_i(s) ds + \epsilon _i = \sum_{j=1}^J \beta(t_j)X_i(t_j)+\epsilon_i
+$$
+with large number of points $t_j$
+
+In general, $X(t_j) = [X_1(t_j),X_2(t_j),..,X_N(t_j)]^T$ is strongly correlated (linearly dependent).      
+*colinearity / multicolinearity * , so the variance of some components $\hat\beta$ become large.      
+
+
+We can use ridge regression and principal component regression. 
+
+
+\newpage 
+## 4.4 Estimation through a basis expansion 
+
+with intercept term 
+$$
+Y_i = \alpha+ \int \beta(s) X_i(s) ds + \epsilon _i
+$$
+
+basis expansion 
+$$
+\beta(t) = \sum_{k=1}^K c_k B_k(t)
+$$
+basis function $B_k$ influence the shape of the estimate.    
+$K$ is smaller than number of points $t_j$
+
+disadvantage is that the estimate $\hat\beta(t)$ depends on the shape of the basis function and number K. 
+
+
+$$
+\int \beta(s) X_i(t) dt = \sum_{k=1}^K c_k \int B_k(t)X_i(t)dt =: \sum_{k=1}^K x_{ik} c_k
+$$
+
+then $\hat c = (X^T X)^{-1} X^T Y$
+
+
+- residuals 
+
+$$
+\epsilon_i = y_i - \hat\alpha - \int \hat\beta(t)X_i(t)dt = y_i - \hat\alpha - \sum_{k=1}^K x_{ik} \hat c_k
+$$
+
+The variance of $\hat c_k$ is estimated by diagonal entry of matrix $\hat\sigma_k^2 = \hat\sigma_\epsilon^2 (X^T X)^{-1}$  
+
+
+- approximate 95 % CI of $\beta$ 
+$$
+\sum_{k=1}^K =\hat c_k B_k(t) +- 1.96 \sum_{k=1}^K \hat \sigma_k B_k(t)
+$$ 
+
+***
+
+$\beta$ can be expanded without any approx error, i.e. $\beta(t) = \sum_{k=1}^\infty c_k B_k(t)$
+
+$$
+\beta(t) = \sum_{k=1}^K c_k B_k(t) + \sum_{k=K+1}^\infty c_k B_k(t) = \sum_{k=1}^K c_k B_k(t) + \delta(t)
+$$
+
+$\delta(t)$ : truncation error 
+
+- model 
+$$
+\int \beta(s) X_i(t) dt =  \sum_{k=1}^K x_{ik} c_k + \int \delta(t)X_i(t)dt := \sum_{k=1}^K x_{ik} c_k + \delta_i 
+$$ 
+
+$$
+\bf{Y = Xc + \delta + \epsilon}
+$$
+
+- least square estimator (biased)
+$$
+\bf{\hat c = c+ (X^TX)^{-1}X^T\delta + (X^TX)^{-1}X^T\epsilon}
+$$
+
+bias.. so necessary to assume that K increases to infinity with the sample size N 
+
+- proof
+$$
+\begin{aligned}
+N^{-1}(X^T\delta)(k) &= N^{-1} \sum_{i=1}^N x_{ik}\delta_i \\
+&= \sum_{K+1}^\infty c_j \int \int B_k(t) \hat c_x(t,x) B_j(s) dt ds 
+\end{aligned}
+$$
+
+non-zero number, to make limit vanish assume $K=K(N) \to \infty$
+
+
+
+\newpage 
+## 4.5 Estimation with a roughness penalty 
+
+$K$ : tuning parameter, adjust the smoothness of resulting estimator $\hat\beta(t)$ 
+
+$$
+P_\lambda(\alpha,\beta) = \sum_{i=1}^N \{ Y_i - \alpha \int \beta(t) X_i(t) dt \}^2 + \lambda \int [L\beta(t)]^2 dt 
+$$
+
+common choice of differential operator : $(L\beta)(t) = \beta '' (t)$
+
+if $\lambda$ is too large $\beta$ is too smooth.      
+if $\lambda$ is too small $\beta$ reflect random errors       
+
+
+$$
+\begin{aligned}
+P_\lambda(\alpha,\beta) &= \sum_{i=1}^N \{Y_i - \alpha - \sum_{k=1}^K x_{ik}c_k \}^2 + \lambda \int [\sum_{k=1}^K c_k(LB_k)(t)]^2 dt \\
+&= \sum_{i=1}^N \{ Y_i - \alpha - \sum_{k=1}^K x_{ik}c_k \}^2 + \lambda \sum_{k,k'=1}^K c_k c_{k'} R_{kk'}
+\end{aligned}
+$$
+
+where $R_{kk'} = \int (LB_k)(t)(LB_{k'})(t)dt$   
+
+$$
+\hat c = (X^TX + \lambda R)^{-1}X^TY
+$$
+
+For fixed $\lambda$ , compute estimates $\alpha_\lambda^{(-i)}$ and  $\beta_\lambda^{(-i)}$ using the sample without $(Y_i, X_i)$
+
+- estimates
+
+$$
+\hat Y_{\lambda}^{(-i)} = \alpha_\lambda^{(-i)} + \int \hat \beta_{\lambda}^{(-i)}(s) X_i(s) ds 
+$$
+
+- CV method, selects $\lambda$ which minimizes 
+
+$$
+S_N(\lambda) = \frac{1}{N} \sum_{i=1}^N \{Y_i - \hat Y_{\lambda}^{(-i)} \}^2
+$$
+
+\newpage 
+
+## 4.6 Regression on functional principal components 
+
+function X in $L^2$
+$$
+X(t) = \mu(t)+\sum_{j=1}^{\infty}\xi_jv_j(t)
+$$
+
+$$
+\begin{aligned}
+Y_i &= \alpha + \int \beta(t) (\hat \mu(t) + \sum_{j=1}^p\hat\xi_{ij}\hat v_j(t))dt + \epsilon_i \\
+&= \beta_0 + \sum_{j=1}^p \hat\xi_{ij} \beta_j + \epsilon_i
+\end{aligned} 
+$$
+
+$$
+\hat\beta(t) = \sum_{j=1}^p \hat\beta_j \hat v_j(t) , \quad \hat \alpha = \hat \beta_0 - \sum_{j=1}^p \hat \beta_j
+ \int \hat v_j(t)\hat\mu(t)dt 
+$$
+
+$$
+Y = \Xi\beta + \varepsilon
+$$
+
+selection of number of EFPC **p** 
+
+
+
+
+\newpage 
+
+## 4.7 Implementation in `refund` package 
+
+```{r message=FALSE}
+rm(list=ls())
+library(fda)
+library(refund); library(ggplot2)
+#install.packages('dplyr')
+#install.packages('reshape2')
+library(dplyr); library(reshape2)
+set.seed(9000)
+```
+
+
+$$
+Y_i = \int \beta(s) X_i(s)ds + \epsilon_i \quad i=1,2,..,N 
+$$
+
+
+- 2 regression functions 
+$$
+\beta_1(t) = sin(2\pi t), \quad \beta_2(t) = -f_1(t)+3f_2(t)+f_3(t), \quad t \in [0,1]
+$$
+
+$f_1, f_2, f_3$ are normal densities 
+
+
+```{r}
+set.seed(9000)
+n = 1000
+grid = seq(0,1,length=101)
+beta1 = sin(grid*2*pi) # beta1
+beta2 = -dnorm(grid, mean=.2, sd=.03) +
+  3*dnorm(grid,mean=.5,sd=.04) +
+  dnorm(grid,mean=.75, sd=.05)
+```
+
+- regressor curves are generated. $N=1000$ independent pairs $(X_i, \epsilon_i)$ of curves 
+
+$$
+X(t_j) = Z t_j + U + \eta(t_j) + \epsilon(t_j), \quad Z\sim N(1,0.2^2), \quad U \sim UNIF[0,5], \eta(t_j)\sim N(0,1)
+$$
+
+$$
+\epsilon(t) = \sum_{k=1}^{10} \frac{1}{k} \{ Z_{1k} sin(2\pi t k )+ Z_{2k} cos(2\pi t k) \} 
+$$
+
+
+```{r}
+set.seed(9000)
+X <- matrix(0, nrow=n, ncol=length(grid))
+for(i2 in 1:n){
+  X[i2,] <- X[i2,]+rnorm(length(grid),0,1) # Z
+  X[i2,] <- X[i2,]+runif(1,0,5) # U
+  X[i2,] <- X[i2,]+rnorm(1,1,0.2)*grid # eta 
+  # epsilon
+  for(j2 in 1:10){
+    e=rnorm(2, 0, 1/j2^ (2))
+    X[i2,] <- X[i2,]+e[1]*sin((2*pi)*grid*j2)
+    X[i2,] <- X[i2,]+e[2]*cos((2*pi)*grid*j2)
+  }
+}
+```
+
+
+- generate artificial data 
+```{r}
+Y <- X %*% beta1 * .01 + rnorm(n, 0, .4)
+
+# FPCR
+fit.fpcr = pfr(Y~fpc(X)) # fpc() : construct FPC regression term 
+
+# Basis : lf() Construct a FLM regression term 
+fit.lin <- pfr(Y~lf(X,bs='ps', 
+                   k=15,
+                   fx=TRUE)) # no penalty
+# Penalized 
+fit.pfr <- pfr(Y~lf(X,bs='ps',
+                    k=50))
+```
+
+
+- plotting 
+```{r}
+coefs <- data.frame(grid=grid,
+                    FPCR=coef(fit.fpcr)$value,
+                    Basis=coef(fit.lin)$value,
+                    Penalized=coef(fit.pfr)$value,
+                    Truth=beta1)
+
+coefs.m <- melt(coefs, id='grid') # melt() : convert an object into a molten dataframe
+colnames(coefs.m) = c('grid','Method','Value')
+
+ggplot(coefs.m,
+       aes(x=grid,y=Value,
+           color=Method,group=Method),
+       width=12, height=6)+
+  geom_path()+
+  theme_bw()
+```
+
+```{r}
+head(coefs)
+```
+
+```{r}
+X <- matrix(0, nrow=n, ncol=length(grid))
+for(i2 in 1:n){
+  X[i2,]=X[i2,]+rnorm(length(grid), 0, 1)
+  X[i2,]=X[i2,]+runif(1, 0, 5)
+  X[i2,]=X[i2,]+rnorm(1, 1, 0.2)*grid
+  for(j2 in 1:10){
+    e=rnorm(2, 0, 1/j2^(2))
+    X[i2,]=X[i2,]+e[1]*sin((2*pi)*grid*j2)
+    X[i2,]=X[i2,]+e[2]*cos((2*pi)*grid*j2)
+  } }
+
+Y = X %*% beta2 * .01 + rnorm(n, 0, .4)
+fit.fpcr = pfr(Y~fpc(X))
+fit.lin = pfr(Y~lf(X, bs = "ps", k = 15, fx = TRUE))
+fit.pfr = pfr(Y~lf(X, bs = "ps", k = 50))
+
+coefs = data.frame(grid = grid,
+                   FPCR = coef(fit.fpcr)$value,
+                   Basis = coef(fit.lin)$value,
+                   Penalized = coef(fit.pfr)$value,
+                   Truth = beta2)
+coefs.m = melt(coefs, id = "grid")
+colnames(coefs.m) = c("grid", "Method", "Value")
+ggplot(coefs.m, aes(x = grid, y = Value, color = Method, group
+     = Method),width=12,height=6) + geom_path() + theme_bw()
+```
+
+
+
+
+
+
+\newpage 
+
+## 4.9 Chapter 4 Problems 
+
+
+
+
+
+
