@@ -1,0 +1,208 @@
+---
+title: "kokoszka FDA CH12 "
+author: Noa Jeong 
+output: 
+  pdf_document:  
+    latex_engine: xelatex
+  html_document: default
+---
+# Ch 12 
+
+```{r message=FALSE}
+rm(list=ls())
+
+library(MASS)
+library(fda)
+library(ggplot2)
+```
+
+
+## 12.4
+
+```{r}
+# R.version # R version 4.4.1 (2024-06-14)
+```
+
+```{r message=FALSE}
+#install.packages("sp")
+#install.packages("RandomFieldsUtils_1.2.5.tar.gz", repos = NULL)
+#install.packages('RandomFields_3.3.14.tar.gz',repos = NULL)
+
+#install.packages('CompQuadForm')
+
+library(RandomFields); library(CompQuadForm)
+```
+
+- `RandomFields` is used to simulate the functions.     
+- `CompQuadForm` is used to find the p-values for the norm approach.
+
+### A simulation Study 
+
+N = 100 with 50 evenly spaced time points over [0,1] 
+
+$$
+X_n(t) = \mu(t) + \epsilon_n(t)
+$$
+
+with $\epsilon_n$ taken to be iid Matern processes with variance=1, scale = 1/4, smoothness = 5/2 
+
+mean function $\mu$ to be 
+$$
+\mu(t) = c_1 \sqrt2 sin((k-1/2)\pi t)
+$$
+
+
+
+First we set an option for RandomFields so that matrices are output.
+```{r}
+RFoptions(spConform=FALSE) # makes output a matrix
+```
+
+Then we set the parameters of the Matern error
+```{r}
+nu<-3/2; var = 1; scale = 1/4
+Mat_model<-RMmatern(nu = nu , var = 1 , scale = scale)
+N<-10; m<-50;
+```
+
+Next we generate the mean function
+```{r}
+times<-seq(0,1,length=m)
+c1<-0; k<-1
+mu<-function(x){c1*sqrt(2)*sin((k-1/2)*pi*x)}
+mu_vec<-mu(times)
+```
+
+Now we simulate the data and tests.
+```{r}
+reps<-10
+TPC3_pval<-numeric(reps)
+Tnorm_pval<-numeric(reps)
+for(i in 1:reps){
+  # Step 1 - Simulate Data
+  # Prevent RFsimulate from printing
+  capture.output(eps<-RFsimulate(Mat_model,
+                                 times,
+                                 n=N))
+  X_mat<-scale(t(eps),center=-mu_vec,scale=FALSE)
+  X.f<-Data2fd(times,t(X_mat))
+  # Step 2 - Estimate parameters
+  muhat<-mean.fd(X.f)
+  X.pca<-pca.fd(X.f,nharm=20)
+  lambda<-X.pca$values
+  scores<-X.pca$scores
+  v<-X.pca$harmonics
+  # Step 3 - Compute tests and p-values
+  # PCA test with 3 PCs 
+  TPC3 <- N*sum(inprod(v[1:3],muhat)^2/lambda[1:3])
+  TPC3_pval[i]<-pchisq(TPC3,3,lower.tail=FALSE)
+  # Norm test
+  Tnorm<-N*sum(inprod(v[lambda[1:20]>0],muhat)^2)
+  Tnorm_pval[i]<-imhof(Tnorm,lambda[lambda[1:20]>0])[[1]]}
+```
+
+`RFsimulate` : Simualtion of Random Fields 
+simulate **unconditional** random fields 
+
+
+\newpage
+
+## 12.8 Chapter 12 Problems 
+
+### Q. 12.3 
+
+Recall the simulation scheme given in **Problem 1.5.** For the three $\nu$ scenarios, increase N to 1000. 
+
+
+```{r message=FALSE}
+rm(list=ls())
+library(fda)
+library(ggplot2)
+#install.packages('tidyverse')
+library(tidyverse)
+```
+
+(a) Plot the estimates for the first 10 eigenvalues and include confidence intervals. Include everything in one plot if you can (but use no more than three plots). 
+
+(`?RMmatern`)
+
+- `RMmatern` : stationary isotropic covariance model belonging to matern family.   
+
+- `RFsimulate` : Simulate functional data based on specific covariance function 
+
+
+(b) How many of the CI’s did not include 0? Suppose you used that to determine the number of FPC’s; how does that compare to the explained variance approach?
+
+```{r}
+RFoptions(spConform=FALSE)
+```
+
+```{r}
+set.seed(1)
+
+# set parameters 
+nu_values <- c(0.5,2,4); sigma2 <- 1; rho <- 1 
+N <- 1000 
+m <- 50 # time points 
+
+# generate mean function 
+time_points <- seq(0, 1, length.out = m)
+c1 <- 0; k <- 1
+mu <- function(x){c1*sqrt(2)*sin((k-1/2)*pi*x)}
+mu_vec <- mu(time_points) 
+
+
+n_obs <- 100
+n_simul <- 100
+lambda_boot <- matrix(NA, nrow=n_simul, ncol=10)
+
+# simualte data 
+for(i in 1:3){ # for each nu values 
+  # epsilon_n taken to b iid Matern process 
+  Mat_model <- RMmatern(nu_values[i], 
+                      var = sigma2, 
+                      scale = rho)
+  capture.output(eps <- RFsimulate(Mat_model, # cov function
+                                   time_points,
+                                   n=N)) # number of function to simulate 
+  X_mat <- scale(t(eps), center=-mu_vec, scale=F) 
+  
+  for(n in 1:n_simul){
+    idx <- sample(1:1000, 
+                  size=n_obs, 
+                  replace=T) # bootstrap  
+    boot_data <- X_mat[idx, ]
+    X.f_boot <- Data2fd(time_points,t(boot_data)) # n_obs x 50
+    X.pca_boot <- pca.fd(X.f_boot, nharm=10) 
+    lambda_boot[n,] <- X.pca_boot$values[1:10] # store lambda for each simulation 
+  }
+  
+  lambda_mean <- apply(lambda_boot,2,mean) # 10 means 
+  lambda_upper <- apply(lambda_boot, 2, quantile, probs = 0.975)
+  lambda_lower <- apply(lambda_boot, 2, quantile, probs = 0.025)
+
+  # Create data frame for plotting
+  df <- data.frame(index = 1:10,
+                 lambda = lambda_mean,
+                 lower_ci = lambda_lower,
+                 upper_ci = lambda_upper)
+  print(df)
+
+  # (a) Plot
+  p <- ggplot(df, aes(x = index, y = lambda)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = lower_ci, ymax = upper_ci)) 
+  plot(p)
+  
+  # (b) 
+  eps <- 1e-5
+  print("Number of lower bound which didn't include zero")
+  print(sum(df$lower_ci > eps))
+
+}
+
+```
+
+
+
+
